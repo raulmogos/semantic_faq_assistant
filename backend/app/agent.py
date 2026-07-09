@@ -3,17 +3,17 @@ import logging
 import uuid
 
 from langchain.agents import create_agent
-from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 from langchain_postgres import PGVector
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.prebuilt import create_react_agent
 
-from repos.message_store import MessageMetadataStore
-from schemas import AgentResponse
-from settings import Settings
-from similarity_search import create_search_faq_tool
+from app.repos.message_store import MessageMetadataStore
+from app.schemas import AgentResponse
+from app.settings import Settings
+from app.similarity_search import create_search_faq_tool
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ Follow these steps for every new question:
 6. Reply with ONLY a valid JSON object — no prose, no markdown — in this exact shape:
    {"answer": "<plain text answer>", "source": "<vector_search|llm|compliance>", "similarity_score": <float or null>}
 """
+
 
 class RouterAgent:
     """
@@ -130,8 +131,11 @@ class RouterAgent:
             )
             config = {"configurable": {"thread_id": str(uuid.uuid4())}}
             history_messages = [
-                HumanMessage(content=m["content"]) if m["role"] == "user"
-                else AIMessage(content=m["content"])
+                (
+                    HumanMessage(content=m["content"])
+                    if m["role"] == "user"
+                    else AIMessage(content=m["content"])
+                )
                 for m in parsed_history
                 if isinstance(m, dict) and "role" in m and "content" in m
             ]
@@ -141,9 +145,7 @@ class RouterAgent:
             )
             for msg in reversed(result.get("messages", [])):
                 if isinstance(msg, AIMessage) and msg.content:
-                    logger.info(
-                        "ask_openai_subagent: response length=%d", len(str(msg.content))
-                    )
+                    logger.info("ask_openai_subagent: response length=%d", len(str(msg.content)))
                     return str(msg.content)
             logger.warning("ask_openai_subagent: no AIMessage found in subagent result")
             return "I could not generate a response."
@@ -201,7 +203,9 @@ class RouterAgent:
                 )
                 return parsed
             except Exception:
-                logger.warning("_extract_response: could not parse AIMessage as JSON, using raw content")
+                logger.warning(
+                    "_extract_response: could not parse AIMessage as JSON, using raw content"
+                )
                 return AgentResponse(answer=content, source="llm")
 
         logger.error("_extract_response: no usable AIMessage found in agent result")

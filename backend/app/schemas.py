@@ -7,6 +7,7 @@ AnswerSource = Literal["vector_search", "llm", "compliance"]
 
 class AgentResponse(BaseModel):
     """Structured output returned by the router agent and used internally throughout the app."""
+
     answer: str
     source: AnswerSource
     similarity_score: float | None = None
@@ -14,6 +15,7 @@ class AgentResponse(BaseModel):
 
 class SimilaritySearchResult(BaseModel):
     """Result of a single cosine similarity search against the knowledge base."""
+
     question: str
     answer: str
     category: str
@@ -27,12 +29,14 @@ class AskQuestionRequest(BaseModel):
     and reused for every subsequent message in the same conversation.
     LangGraph uses it as thread_id so the checkpointer manages history automatically.
     """
+
     session_id: str
     question: str
 
 
 class AskQuestionResponse(BaseModel):
     """Response body for POST /ask-question."""
+
     answer: str
     source: AnswerSource
     similarity_score: float | None = None
@@ -40,6 +44,7 @@ class AskQuestionResponse(BaseModel):
 
 class ConversationMessage(BaseModel):
     """A single human or assistant message in a conversation."""
+
     role: Literal["user", "assistant"]
     content: str
     source: Literal["vector_search", "llm", "compliance"] | None = None
@@ -48,6 +53,7 @@ class ConversationMessage(BaseModel):
 
 class SessionSummary(BaseModel):
     """Brief summary of a stored conversation session."""
+
     session_id: str
     message_count: int
     preview: str | None = None

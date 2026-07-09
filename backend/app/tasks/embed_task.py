@@ -4,19 +4,20 @@ from pathlib import Path
 
 from celery import Task
 
-from celery_app import celery_app
-from settings import get_settings
+from app.celery_app import celery_app
+from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 
 def _knowledge_base_path() -> Path:
     """Resolve the knowledge base JSON path for both local dev and Docker."""
-    # /app/tasks/embed_task.py → .parent = /app/tasks → .parent = /app
-    app_root = Path(__file__).resolve().parent.parent
+    # backend/app/tasks/embed_task.py → .parent×3 = backend/
+    # Docker: /app/app/tasks/embed_task.py → .parent×3 = /app (the mounted root)
+    backend_root = Path(__file__).resolve().parent.parent.parent
     candidates = [
-        app_root / "data" / "knowledge_base.json",          # Docker: /app/data/
-        app_root.parent / "data" / "knowledge_base.json",   # local dev: project_root/data/
+        backend_root / "data" / "knowledge_base.json",  # Docker: /app/data/
+        backend_root.parent / "data" / "knowledge_base.json",  # local dev: project_root/data/
     ]
     for path in candidates:
         if path.exists():
@@ -43,7 +44,7 @@ class EmbedTask(Task):
 @celery_app.task(
     bind=True,
     base=EmbedTask,
-    name="tasks.embed_task.rebuild_embeddings",
+    name="app.tasks.embed_task.rebuild_embeddings",
     queue="embeddings",
     max_retries=3,
     default_retry_delay=30,
@@ -91,4 +92,4 @@ def rebuild_embeddings(self: EmbedTask) -> dict:
 
     except Exception as exc:
         logger.error("rebuild_embeddings: failed — %s", exc, exc_info=True)
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc

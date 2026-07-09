@@ -5,15 +5,15 @@ from typing import Any
 from langchain_core.tools import tool
 from langchain_postgres import PGVector
 
-from schemas import SimilaritySearchResult
-from settings import Settings
+from app.schemas import SimilaritySearchResult
+from app.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 
 def cosine_similarity(vector_a: list[float], vector_b: list[float]) -> float:
     """Compute the cosine similarity between two vectors. Returns a value in [-1, 1]."""
-    dot_product = sum(a * b for a, b in zip(vector_a, vector_b))
+    dot_product = sum(a * b for a, b in zip(vector_a, vector_b, strict=True))
     norm_a = math.sqrt(sum(a * a for a in vector_a))
     norm_b = math.sqrt(sum(b * b for b in vector_b))
     if norm_a == 0 or norm_b == 0:

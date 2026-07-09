@@ -34,3 +34,6 @@ For every question follow these steps:
          Build this from the conversation history available to you.
 4. Set similarity_score to the float from the search result (null only if no entries found).
 """
+
+cd backend
+ruff check . --fix && black . && isort .

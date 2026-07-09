@@ -11,9 +11,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
-
-    pythonunbuffered: int = 1
 
     app_host: str = "0.0.0.0"
     app_port: int = 8000
@@ -24,9 +23,7 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
 
-    database_url: str = (
-        "postgresql://postgres:postgres@localhost:5432/semantic_fqa"
-    )
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/semantic_fqa"
 
     openai_api_key: str = ""
     openai_model: str = "gpt-5.4-mini"

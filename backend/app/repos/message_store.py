@@ -2,8 +2,8 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Float, String, func, select, delete
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import Float, String, delete, func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 logger = logging.getLogger(__name__)
@@ -23,9 +23,7 @@ class MessageMetadata(Base):
     role: Mapped[str] = mapped_column(String, nullable=False, default="assistant")
     source: Mapped[str] = mapped_column(String, nullable=False)
     similarity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
 
 
 @dataclass
@@ -71,16 +69,20 @@ class MessageMetadataStore:
     ) -> None:
         """Persist metadata for one assistant message."""
         async with self._session_factory() as session:
-            session.add(MessageMetadata(
-                session_id=session_id,
-                role=role,
-                source=source,
-                similarity_score=similarity_score,
-            ))
+            session.add(
+                MessageMetadata(
+                    session_id=session_id,
+                    role=role,
+                    source=source,
+                    similarity_score=similarity_score,
+                )
+            )
             await session.commit()
         logger.debug(
             "MessageMetadataStore.save: session_id=%s source=%s similarity_score=%s",
-            session_id, source, similarity_score,
+            session_id,
+            source,
+            similarity_score,
         )
 
     async def get_by_session(self, session_id: str) -> list[MessageRecord]:
@@ -113,6 +115,7 @@ class MessageMetadataStore:
             deleted = result.rowcount
         logger.info(
             "MessageMetadataStore.delete_by_session: session_id=%s deleted=%d",
-            session_id, deleted,
+            session_id,
+            deleted,
         )
         return deleted

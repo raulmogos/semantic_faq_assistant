@@ -1,6 +1,6 @@
 from celery import Celery
 
-from settings import get_settings
+from app.settings import get_settings
 
 settings = get_settings()
 
@@ -8,7 +8,7 @@ celery_app = Celery(
     "semantic_fqa",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["tasks.embed_task"],
+    include=["app.tasks.embed_task"],
 )
 
 celery_app.conf.update(
@@ -19,6 +19,6 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     task_routes={
-        "tasks.embed_task.*": {"queue": "embeddings"},
+        "app.tasks.embed_task.*": {"queue": "embeddings"},
     },
 )

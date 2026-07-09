@@ -5,8 +5,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 
-from repos.message_store import MessageMetadataStore
-from schemas import ConversationMessage, SessionSummary
+from app.repos.message_store import MessageMetadataStore
+from app.schemas import ConversationMessage, SessionSummary
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,9 @@ class SessionRepository:
         config = {"configurable": {"thread_id": session_id}}
         state = await self._agent.aget_state(config)
         if not state or not state.values:
-            logger.info("SessionRepository.get_history: no state found for session_id=%s", session_id)
+            logger.info(
+                "SessionRepository.get_history: no state found for session_id=%s", session_id
+            )
             return []
 
         metadata_records = []
@@ -61,12 +63,14 @@ class SessionRepository:
                         content = data["answer"]
                 except (json.JSONDecodeError, TypeError):
                     pass
-                messages.append(ConversationMessage(
-                    role="assistant",
-                    content=content,
-                    source=meta.source if meta else None,
-                    similarity_score=meta.similarity_score if meta else None,
-                ))
+                messages.append(
+                    ConversationMessage(
+                        role="assistant",
+                        content=content,
+                        source=meta.source if meta else None,
+                        similarity_score=meta.similarity_score if meta else None,
+                    )
+                )
 
         logger.info(
             "SessionRepository.get_history: session_id=%s returned %d messages",
@@ -101,11 +105,13 @@ class SessionRepository:
                     preview = text[:80] + ("…" if len(text) > 80 else "")
                     break
 
-            sessions.append(SessionSummary(
-                session_id=thread_id,
-                message_count=meta.get("step", 0),
-                preview=preview,
-            ))
+            sessions.append(
+                SessionSummary(
+                    session_id=thread_id,
+                    message_count=meta.get("step", 0),
+                    preview=preview,
+                )
+            )
 
         logger.info("SessionRepository.list_sessions: found %d sessions", len(sessions))
         return sessions

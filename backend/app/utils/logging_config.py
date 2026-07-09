@@ -2,7 +2,7 @@ import logging
 import sys
 from pathlib import Path
 
-from settings import Settings
+from app.settings import Settings
 
 DEFAULT_LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
