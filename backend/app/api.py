@@ -2,7 +2,6 @@ import logging
 
 from celery.result import AsyncResult
 from fastapi import APIRouter, Request
-from starlette.responses import Response
 
 from app.schemas import AskQuestionRequest, AskQuestionResponse, ConversationMessage, SessionSummary
 from app.tasks.embed_task import rebuild_embeddings
@@ -10,14 +9,6 @@ from app.tasks.embed_task import rebuild_embeddings
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-@router.middleware("http")
-async def log_requests(request: Request, call_next) -> Response:
-    logger.info("%s %s", request.method, request.url.path)
-    response = await call_next(request)
-    logger.info("%s %s -> %s", request.method, request.url.path, response.status_code)
-    return response
 
 
 @router.get("/sessions", response_model=list[SessionSummary])
