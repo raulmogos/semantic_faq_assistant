@@ -1,0 +1,71 @@
+services:
+  vector_db:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d semantic_fqa"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_HOST: vector_db
+      DATABASE_URL: postgresql://postgres:postgres@vector_db:5432/semantic_fqa
+    depends_on:
+      vector_db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  dbgate:
+    image: dbgate/dbgate:latest
+    ports:
+      - "8080:3000"
+    environment:
+      CONNECTIONS: vector_db
+      LABEL_vector_db: "Semantic FQA DB"
+      ENGINE_vector_db: postgres@dbgate-plugin-postgres
+      SERVER_vector_db: vector_db
+      PORT_vector_db: 5432
+      USER_vector_db: postgres
+      PASSWORD_vector_db: postgres
+      DATABASE_vector_db: semantic_fqa
+    depends_on:
+      vector_db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    env_file:
+      - ./frontend/.env
+    restart: unless-stopped
+
+volumes:
+  pgdata:
