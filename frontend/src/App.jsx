@@ -8,15 +8,19 @@ import ManageSearchOutlinedIcon from "@mui/icons-material/ManageSearchOutlined";
 import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import SupportAgentOutlinedIcon from "@mui/icons-material/SupportAgentOutlined";
+import SyncOutlinedIcon from "@mui/icons-material/SyncOutlined";
 import {
+  Alert,
   AppBar,
   Avatar,
   Box,
   Chip,
   CircularProgress,
+  Collapse,
   Divider,
   Drawer,
   IconButton,
+  Link,
   List,
   ListItemButton,
   ListItemText,
@@ -35,6 +39,8 @@ const SUGGESTIONS = [
   "How do I reset my password?",
   "Can I change my registered email address?",
   "How do I export my data?",
+  "How do I enable two-factor authentication?",
+  "What payment methods do you accept?",
 ];
 
 const SOURCE_CONFIG = {
@@ -213,6 +219,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [embedTask, setEmbedTask] = useState(null);
+  const [embedLoading, setEmbedLoading] = useState(false);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -267,6 +275,20 @@ export default function App() {
       await fetchSessions();
     } catch {
       // ignore
+    }
+  }
+
+  async function triggerEmbed() {
+    setEmbedLoading(true);
+    setEmbedTask(null);
+    try {
+      const res = await fetch(`${API_URL}/admin/embed`, { method: "POST" });
+      const data = await res.json();
+      setEmbedTask(data);
+    } catch {
+      setEmbedTask({ error: "Failed to reach the server." });
+    } finally {
+      setEmbedLoading(false);
     }
   }
 
@@ -333,7 +355,7 @@ export default function App() {
         <AppBar position="static" elevation={0} sx={{ bgcolor: "primary.main", color: "primary.contrastText" }}>
           <Toolbar>
             <SupportAgentOutlinedIcon sx={{ mr: 1.5, color: "primary.contrastText" }} />
-            <Box>
+            <Box sx={{ flexGrow: 1 }}>
               <Typography variant="h6" component="h1" sx={{ color: "primary.contrastText" }}>
                 Semantic FAQ Assistant
               </Typography>
@@ -341,8 +363,50 @@ export default function App() {
                 Powered by semantic search and AI
               </Typography>
             </Box>
+            <Tooltip title="Re-indexes the knowledge base into the vector store">
+              <span>
+                <IconButton
+                  onClick={triggerEmbed}
+                  disabled={embedLoading}
+                  sx={{
+                    color: "primary.contrastText",
+                    borderRadius: 1,
+                    px: 1.5,
+                    gap: 0.75,
+                  }}
+                >
+                  {embedLoading
+                    ? <CircularProgress size={16} sx={{ color: "primary.contrastText" }} />
+                    : <SyncOutlinedIcon fontSize="small" />}
+                  <Typography variant="button" sx={{ color: "primary.contrastText", fontSize: "0.75rem" }}>
+                    {embedLoading ? "Rebuilding…" : "Rebuild Embeddings"}
+                  </Typography>
+                </IconButton>
+              </span>
+            </Tooltip>
           </Toolbar>
         </AppBar>
+
+        <Collapse in={Boolean(embedTask)}>
+          {embedTask?.error ? (
+            <Alert severity="error" onClose={() => setEmbedTask(null)}>
+              {embedTask.error}
+            </Alert>
+          ) : embedTask ? (
+            <Alert severity="info" onClose={() => setEmbedTask(null)}>
+              Embedding task queued — task ID:{" "}
+              <strong>{embedTask.task_id}</strong>. Check status at{" "}
+              <Link
+                href={`${API_URL}/admin/embed/${embedTask.task_id}`}
+                target="_blank"
+                rel="noreferrer"
+                sx={{ color: "blue" }}
+              >
+                {`${API_URL}/admin/embed/${embedTask.task_id}`}
+              </Link>
+            </Alert>
+          ) : null}
+        </Collapse>
 
         <Box sx={{ flex: 1, display: "flex", flexDirection: "column", p: 3, gap: 2, overflow: "hidden" }}>
           <Paper
@@ -373,17 +437,31 @@ export default function App() {
                     Ask a question about your account, billing, security, or settings.
                   </Typography>
                 </Box>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  {SUGGESTIONS.map((suggestion) => (
-                    <Chip
-                      key={suggestion}
-                      label={suggestion}
-                      variant="outlined"
-                      clickable
-                      onClick={() => submitQuestion(suggestion)}
-                      disabled={loading}
-                    />
-                  ))}
+                <Stack spacing={1} alignItems="center">
+                  <Stack direction="row" spacing={1}>
+                    {SUGGESTIONS.slice(0, 3).map((suggestion) => (
+                      <Chip
+                        key={suggestion}
+                        label={suggestion}
+                        variant="outlined"
+                        clickable
+                        onClick={() => submitQuestion(suggestion)}
+                        disabled={loading}
+                      />
+                    ))}
+                  </Stack>
+                  <Stack direction="row" spacing={1}>
+                    {SUGGESTIONS.slice(3).map((suggestion) => (
+                      <Chip
+                        key={suggestion}
+                        label={suggestion}
+                        variant="outlined"
+                        clickable
+                        onClick={() => submitQuestion(suggestion)}
+                        disabled={loading}
+                      />
+                    ))}
+                  </Stack>
                 </Stack>
               </Stack>
             ) : (

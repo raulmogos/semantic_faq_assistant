@@ -1,4 +1,4 @@
- Cosine similarity
+Cosine similarity
 Euclidean distance
 Dot product
 

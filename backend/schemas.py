@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel
@@ -7,22 +6,13 @@ AnswerSource = Literal["vector_search", "llm", "compliance"]
 
 
 class AgentResponse(BaseModel):
-    """Structured output returned by the router agent."""
+    """Structured output returned by the router agent and used internally throughout the app."""
     answer: str
     source: AnswerSource
     similarity_score: float | None = None
 
 
-@dataclass
-class FaqAnswer:
-    """Internal answer object passed between agent and endpoint."""
-    answer: str
-    source: AnswerSource
-    similarity_score: float | None = None
-
-
-@dataclass
-class SimilaritySearchResult:
+class SimilaritySearchResult(BaseModel):
     """Result of a single cosine similarity search against the knowledge base."""
     question: str
     answer: str

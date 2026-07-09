@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     top_k: int = 5
     similarity_threshold: float = 0.5
 
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/0"
+
     log_level: str = "INFO"
     log_format: str = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     log_file: str = ""

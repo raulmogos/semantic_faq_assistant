@@ -7,3 +7,4 @@ langchain-openai
 langchain-postgres
 psycopg[binary]
 langgraph-checkpoint-postgres
+celery[redis]

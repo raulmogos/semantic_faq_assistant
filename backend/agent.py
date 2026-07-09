@@ -10,27 +10,38 @@ from langchain_postgres import PGVector
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 
-from message_store import MessageMetadataStore
-from schemas import AgentResponse, ConversationMessage, FaqAnswer, SessionSummary
+from repos.message_store import MessageMetadataStore
+from schemas import AgentResponse
 from settings import Settings
 from similarity_search import create_search_faq_tool
 
 logger = logging.getLogger(__name__)
 
 
-SYSTEM_PROMPT = """You are a helpful FAQ assistant.
+SYSTEM_PROMPT = """You are a helpful FAQ assistant with memory of the full conversation history.
 
-Follow these steps for every question:
-1. Is the question IT related and follows the topics that the system is designed to answer?
-    If not, we have to route it to a Compliance Agent, set source='compliance'. Any other questions which are unrelated to IT should be answered by the Compliance Agent, set source='compliance'.
-    If the question is somehow related to the conversation history, we have to route it to a OpenAI Agent, set source='llm'.
-2. Always call the search_faq tool with the user's question.
-3. Read the tool result carefully — it includes similarity_score, threshold.
-4. Take a decision based on the relevancy of the question and the similarity_score should be above the threshold.
-5. If you decide to respond from your own knowledge: answer using the conversation history and set source='llm',
-    otherwise return the answer from the search_faq tool and set source='vector_search'.
-6. Always set similarity_score to the value returned by the tool (null if no results).
-5. Reply with ONLY a valid JSON object — no prose, no markdown — in this exact shape:
+Follow these steps for every new question:
+
+1. Check if the question refers to the current conversation (e.g. "what was my first question?",
+   "summarise our chat", "what did I ask earlier?").
+   - If YES: answer directly from the conversation history visible to you. Set source='llm',
+     similarity_score=null. Do NOT call any tool. Skip to step 5.
+
+2. Is the question IT-related (accounts, billing, security, settings, passwords, devices, etc.)?
+   - If NO (completely off-topic, unrelated to IT): call ask_compliance_agent. Set source='compliance'.
+   - If YES: continue to step 3.
+
+3. Call the search_faq tool with the user's question.
+
+4. Read the tool result (it includes similarity_score and threshold).
+   - If similarity_score >= threshold: return the knowledge-base answer in a personalized way. This means that the
+        answers should be augmented with the retrieved information. Set source='vector_search'.
+   - If similarity_score < threshold: call ask_openai_subagent with the question and a JSON array
+     of previous turns as `history`. Set source='llm'.
+
+5. Always set similarity_score to the value returned by search_faq (null if no tool was called).
+
+6. Reply with ONLY a valid JSON object — no prose, no markdown — in this exact shape:
    {"answer": "<plain text answer>", "source": "<vector_search|llm|compliance>", "similarity_score": <float or null>}
 """
 
@@ -158,9 +169,9 @@ class RouterAgent:
     # Public interface
     # ------------------------------------------------------------------
 
-    def _extract_response(self, result: dict) -> FaqAnswer:
+    def _extract_response(self, result: dict) -> AgentResponse:
         """
-        Extract and clean the router agent's raw result into a FaqAnswer.
+        Extract and clean the router agent's raw result into an AgentResponse.
 
         The agent is prompted to return a JSON object as its final message.
         We scan messages in reverse and try to parse the first AIMessage that
@@ -188,124 +199,15 @@ class RouterAgent:
                     parsed.source,
                     parsed.similarity_score,
                 )
-                return FaqAnswer(
-                    answer=parsed.answer,
-                    source=parsed.source,
-                    similarity_score=parsed.similarity_score,
-                )
+                return parsed
             except Exception:
                 logger.warning("_extract_response: could not parse AIMessage as JSON, using raw content")
-                return FaqAnswer(answer=content, source="llm")
+                return AgentResponse(answer=content, source="llm")
 
         logger.error("_extract_response: no usable AIMessage found in agent result")
-        return FaqAnswer(answer="I do not know.", source="llm")
-    
-    async def delete_session(self, session_id: str) -> None:
-        """
-        Delete a conversation session from all storage layers:
-        - message_metadata table (our source/similarity data)
-        - LangGraph checkpoint tables (checkpoints, checkpoint_blobs, checkpoint_writes)
-        """
-        logger.info("RouterAgent.delete_session: session_id=%s", session_id)
+        return AgentResponse(answer="I do not know.", source="llm")
 
-        if self._message_store:
-            await self._message_store.delete_by_session(session_id)
-
-        if hasattr(self._checkpointer, "conn"):
-            conn = self._checkpointer.conn
-            async with conn.cursor() as cur:
-                for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
-                    await cur.execute(
-                        f"DELETE FROM {table} WHERE thread_id = %s",  # noqa: S608
-                        (session_id,),
-                    )
-                    logger.debug(
-                        "RouterAgent.delete_session: deleted from %s rows=%d",
-                        table,
-                        cur.rowcount,
-                    )
-
-        logger.info("RouterAgent.delete_session: session_id=%s deleted", session_id)
-
-    async def get_session_history(self, session_id: str) -> list[ConversationMessage]:
-        """
-        Retrieve all messages for a given session, enriched with source and similarity_score
-        from the message_metadata table when available.
-        """
-        logger.info("RouterAgent.get_session_history: session_id=%s", session_id)
-        config = {"configurable": {"thread_id": session_id}}
-        state = await self._agent.aget_state(config)
-        if not state or not state.values:
-            logger.info("RouterAgent.get_session_history: no state found for session_id=%s", session_id)
-            return []
-
-        metadata_records = []
-        if self._message_store:
-            metadata_records = await self._message_store.get_by_session(session_id)
-        meta_iter = iter(metadata_records)
-
-        messages: list[ConversationMessage] = []
-        for msg in state.values.get("messages", []):
-            if isinstance(msg, HumanMessage):
-                messages.append(ConversationMessage(role="user", content=str(msg.content)))
-            elif isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
-                meta = next(meta_iter, None)
-                content = str(msg.content)
-                try:
-                    parsed = AgentResponse.model_validate_json(content)
-                    content = parsed.answer
-                except Exception:
-                    pass
-                messages.append(ConversationMessage(
-                    role="assistant",
-                    content=content,
-                    source=meta.source if meta else None,
-                    similarity_score=meta.similarity_score if meta else None,
-                ))
-
-        logger.info(
-            "RouterAgent.get_session_history: session_id=%s returned %d messages",
-            session_id,
-            len(messages),
-        )
-        return messages
-
-    async def list_sessions(self) -> list[SessionSummary]:
-        """
-        List all conversation sessions stored in the checkpointer.
-        Each session includes a preview taken from the first user message.
-        """
-        logger.info("RouterAgent.list_sessions: fetching all sessions")
-        seen: set[str] = set()
-        sessions: list[SessionSummary] = []
-
-        async for checkpoint_tuple in self._checkpointer.alist({}):
-            meta = checkpoint_tuple.metadata or {}
-            config = checkpoint_tuple.config or {}
-            thread_id = config.get("configurable", {}).get("thread_id", "unknown")
-
-            if thread_id in seen:
-                continue
-            seen.add(thread_id)
-
-            preview: str | None = None
-            checkpoint = checkpoint_tuple.checkpoint or {}
-            for msg in checkpoint.get("channel_values", {}).get("messages", []):
-                if isinstance(msg, HumanMessage) and msg.content:
-                    text = str(msg.content).strip()
-                    preview = text[:80] + ("…" if len(text) > 80 else "")
-                    break
-
-            sessions.append(SessionSummary(
-                session_id=thread_id,
-                message_count=meta.get("step", 0),
-                preview=preview,
-            ))
-
-        logger.info("RouterAgent.list_sessions: found %d sessions", len(sessions))
-        return sessions
-
-    async def ask(self, session_id: str, question: str) -> FaqAnswer:
+    async def ask(self, session_id: str, question: str) -> AgentResponse:
         """
         Invoke the router agent for a given session and question.
 

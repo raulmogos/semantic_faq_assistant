@@ -29,9 +29,41 @@ services:
     environment:
       POSTGRES_HOST: vector_db
       DATABASE_URL: postgresql://postgres:postgres@vector_db:5432/semantic_fqa
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
     depends_on:
       vector_db:
         condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A celery_app worker --loglevel=info --queues=embeddings
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_HOST: vector_db
+      DATABASE_URL: postgresql://postgres:postgres@vector_db:5432/semantic_fqa
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      vector_db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   dbgate:
