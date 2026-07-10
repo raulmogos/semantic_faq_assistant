@@ -108,39 +108,14 @@ class RouterAgent:
         )
 
         @tool
-        def ask_openai_subagent(question: str, history: str = "[]") -> str:
+        def ask_openai_subagent(question: str) -> str:
             """
             OpenAI subagent for on-topic questions not found in the knowledge base.
-            Pass the full conversation history as a JSON array so the subagent has context.
             """
-            try:
-                parsed_history = json.loads(history)
-            except json.JSONDecodeError:
-                logger.warning(
-                    "ask_openai_subagent: malformed history JSON, proceeding without history. "
-                    "question=%r history_preview=%r",
-                    question,
-                    history[:120],
-                )
-                parsed_history = []
-
-            logger.info(
-                "ask_openai_subagent: question=%r history_len=%d",
-                question,
-                len(parsed_history),
-            )
+            logger.info("ask_openai_subagent: question=%r", question)
             config = {"configurable": {"thread_id": str(uuid.uuid4())}}
-            history_messages = [
-                (
-                    HumanMessage(content=m["content"])
-                    if m["role"] == "user"
-                    else AIMessage(content=m["content"])
-                )
-                for m in parsed_history
-                if isinstance(m, dict) and "role" in m and "content" in m
-            ]
             result = subagent.invoke(
-                {"messages": history_messages + [HumanMessage(content=question)]},
+                {"messages": [HumanMessage(content=question)]},
                 config=config,
             )
             for msg in reversed(result.get("messages", [])):

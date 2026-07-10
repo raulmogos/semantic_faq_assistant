@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/")
+async def health() -> dict:
+    """Check the health of the application."""
+    return {"status": "ok"}
+
+
 @router.get("/sessions", response_model=list[SessionSummary])
 async def list_sessions(request: Request) -> list[SessionSummary]:
     """List all stored conversation sessions."""
