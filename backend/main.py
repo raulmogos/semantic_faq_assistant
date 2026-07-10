@@ -10,6 +10,7 @@ from app.agent import RouterAgent
 from app.api import router
 from app.repos.message_store import MessageMetadataStore
 from app.repos.session_repository import SessionRepository
+from app.repos.user_repository import UserRepository
 from app.settings import get_settings
 from app.utils.logging_config import setup_logging
 
@@ -21,6 +22,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting application")
+
+    user_repo = UserRepository(settings.database_url)
+    await user_repo.setup()
+    app.state.user_repo = user_repo
+
     message_store = MessageMetadataStore(settings.database_url)
     await message_store.setup()
 
@@ -39,6 +45,7 @@ async def lifespan(app: FastAPI):
         yield
 
     await message_store.close()
+    await user_repo.close()
     logger.info("Shutting down application")
 
 

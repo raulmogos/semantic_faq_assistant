@@ -4,7 +4,9 @@ import AddCommentOutlinedIcon from "@mui/icons-material/AddCommentOutlined";
 import ChatBubbleOutlineOutlinedIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import GppMaybeOutlinedIcon from "@mui/icons-material/GppMaybeOutlined";
+import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import ManageSearchOutlinedIcon from "@mui/icons-material/ManageSearchOutlined";
+import PersonOutlineOutlinedIcon from "@mui/icons-material/PersonOutlineOutlined";
 import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import SupportAgentOutlinedIcon from "@mui/icons-material/SupportAgentOutlined";
@@ -14,6 +16,7 @@ import {
   AppBar,
   Avatar,
   Box,
+  Button,
   Chip,
   CircularProgress,
   Collapse,
@@ -26,6 +29,8 @@ import {
   ListItemText,
   Paper,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Toolbar,
   Tooltip,
@@ -34,6 +39,8 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const DRAWER_WIDTH = 280;
+const TOKEN_KEY = "fqa_token";
+const USER_KEY = "fqa_user";
 
 const SUGGESTIONS = [
   "How do I reset my password?",
@@ -70,6 +77,132 @@ const SOURCE_CONFIG = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
+
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function authHeaders() {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function apiFetch(path, options = {}) {
+  return fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+      ...(options.headers ?? {}),
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// AuthPage
+// ---------------------------------------------------------------------------
+
+function AuthPage({ onAuth }) {
+  const [tab, setTab] = useState(0);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const path = tab === 0 ? "/auth/login" : "/auth/register";
+    try {
+      const res = await fetch(`${API_URL}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.detail ?? "Something went wrong.");
+        return;
+      }
+      localStorage.setItem(TOKEN_KEY, data.access_token);
+      localStorage.setItem(USER_KEY, username);
+      onAuth(username);
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        bgcolor: "background.default",
+      }}
+    >
+      <Paper elevation={3} sx={{ width: 380, p: 4 }}>
+        <Stack spacing={3}>
+          <Stack alignItems="center" spacing={1}>
+            <Avatar sx={{ bgcolor: "primary.main", width: 52, height: 52 }}>
+              <SupportAgentOutlinedIcon />
+            </Avatar>
+            <Typography variant="h6" fontWeight={700}>
+              Semantic FAQ Assistant
+            </Typography>
+          </Stack>
+
+          <Tabs value={tab} onChange={(_, v) => { setTab(v); setError(""); }} centered>
+            <Tab label="Login" />
+            <Tab label="Register" />
+          </Tabs>
+
+          <Stack component="form" spacing={2} onSubmit={handleSubmit}>
+            <TextField
+              label="Username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              fullWidth
+              autoFocus
+              size="small"
+            />
+            <TextField
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              fullWidth
+              size="small"
+            />
+            {error && <Alert severity="error">{error}</Alert>}
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth
+              disabled={loading || !username || !password}
+            >
+              {loading ? <CircularProgress size={20} /> : tab === 0 ? "Login" : "Create Account"}
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
+    </Box>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chat components
+// ---------------------------------------------------------------------------
+
 function AssistantMessage({ message }) {
   const config = SOURCE_CONFIG[message.source] ?? SOURCE_CONFIG.llm;
   const SourceIcon = config.icon;
@@ -92,12 +225,7 @@ function AssistantMessage({ message }) {
       >
         <Stack spacing={1}>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-            <Chip
-              size="small"
-              color={config.chipColor}
-              label={config.label}
-              icon={<SourceIcon />}
-            />
+            <Chip size="small" color={config.chipColor} label={config.label} icon={<SourceIcon />} />
             {message.similarityScore != null && (
               <Typography variant="caption" color="text.secondary">
                 Match {(message.similarityScore * 100).toFixed(0)}%
@@ -163,43 +291,24 @@ function SessionList({ sessions, activeSessionId, onSelect, onNewChat, onDelete,
                 mx: 0.5,
                 my: 0.25,
                 pr: 0.5,
-                "&.Mui-selected": {
-                  bgcolor: "primary.dark",
-                  "&:hover": { bgcolor: "primary.dark" },
-                },
+                "&.Mui-selected": { bgcolor: "primary.dark", "&:hover": { bgcolor: "primary.dark" } },
                 "&:hover": { bgcolor: "grey.800" },
                 "&:hover .delete-btn": { opacity: 1 },
               }}
             >
-              <ChatBubbleOutlineOutlinedIcon
-                fontSize="small"
-                sx={{ mr: 1.5, color: "grey.400", flexShrink: 0 }}
-              />
+              <ChatBubbleOutlineOutlinedIcon fontSize="small" sx={{ mr: 1.5, color: "grey.400", flexShrink: 0 }} />
               <ListItemText
                 primary={session.preview ?? `Session ${session.session_id.slice(-8)}`}
                 secondary={`${session.message_count} messages`}
-                primaryTypographyProps={{
-                  variant: "body2",
-                  noWrap: true,
-                  sx: { color: "common.white" },
-                }}
-                secondaryTypographyProps={{
-                  variant: "caption",
-                  sx: { color: "grey.500" },
-                }}
+                primaryTypographyProps={{ variant: "body2", noWrap: true, sx: { color: "common.white" } }}
+                secondaryTypographyProps={{ variant: "caption", sx: { color: "grey.500" } }}
               />
               <Tooltip title="Delete session">
                 <IconButton
                   className="delete-btn"
                   size="small"
                   onClick={(e) => { e.stopPropagation(); onDelete(session.session_id); }}
-                  sx={{
-                    opacity: 0,
-                    transition: "opacity 0.15s",
-                    color: "grey.400",
-                    flexShrink: 0,
-                    "&:hover": { color: "error.light" },
-                  }}
+                  sx={{ opacity: 0, transition: "opacity 0.15s", color: "grey.400", flexShrink: 0, "&:hover": { color: "error.light" } }}
                 >
                   <DeleteOutlineIcon fontSize="small" />
                 </IconButton>
@@ -212,7 +321,11 @@ function SessionList({ sessions, activeSessionId, onSelect, onNewChat, onDelete,
   );
 }
 
-export default function App() {
+// ---------------------------------------------------------------------------
+// Main app (authenticated)
+// ---------------------------------------------------------------------------
+
+function ChatApp({ username, onLogout }) {
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -229,22 +342,21 @@ export default function App() {
 
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
+      const res = await apiFetch("/sessions");
+      if (res.status === 401) { onLogout(); return; }
       if (res.ok) setSessions(await res.json());
     } catch {
-      // silently ignore — sessions list is non-critical
+      // non-critical
     } finally {
       setSessionsLoading(false);
     }
-  }, []);
+  }, [onLogout]);
 
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
+  useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
   async function loadSession(session) {
     try {
-      const res = await fetch(`${API_URL}/sessions/${session.session_id}`);
+      const res = await apiFetch(`/sessions/${session.session_id}`);
       if (!res.ok) return;
       const history = await res.json();
       setSessionId(session.session_id);
@@ -256,9 +368,7 @@ export default function App() {
           similarityScore: m.similarity_score ?? null,
         }))
       );
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }
 
   function startNewChat() {
@@ -270,21 +380,18 @@ export default function App() {
   async function deleteSession(id) {
     if (!window.confirm("Delete this conversation?")) return;
     try {
-      await fetch(`${API_URL}/sessions/${id}`, { method: "DELETE" });
+      await apiFetch(`/sessions/${id}`, { method: "DELETE" });
       if (id === sessionId) startNewChat();
       await fetchSessions();
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }
 
   async function triggerEmbed() {
     setEmbedLoading(true);
     setEmbedTask(null);
     try {
-      const res = await fetch(`${API_URL}/admin/embed`, { method: "POST" });
-      const data = await res.json();
-      setEmbedTask(data);
+      const res = await apiFetch("/admin/embed", { method: "POST" });
+      setEmbedTask(await res.json());
     } catch {
       setEmbedTask({ error: "Failed to reach the server." });
     } finally {
@@ -301,34 +408,24 @@ export default function App() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/ask-question`, {
+      const response = await apiFetch("/ask-question", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, question: trimmedQuestion }),
       });
 
+      if (response.status === 401) { onLogout(); return; }
       if (!response.ok) throw new Error("Request failed");
 
       const data = await response.json();
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          text: data.answer,
-          source: data.source,
-          similarityScore: data.similarity_score,
-        },
+        { role: "assistant", text: data.answer, source: data.source, similarityScore: data.similarity_score },
       ]);
       fetchSessions();
     } catch {
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          text: "Sorry, I could not reach the server. Please try again in a moment.",
-          source: "llm",
-          similarityScore: null,
-        },
+        { role: "assistant", text: "Sorry, I could not reach the server. Please try again in a moment.", source: "llm", similarityScore: null },
       ]);
     } finally {
       setLoading(false);
@@ -363,17 +460,13 @@ export default function App() {
                 Powered by semantic search and AI
               </Typography>
             </Box>
+
             <Tooltip title="Re-indexes the knowledge base into the vector store">
               <span>
                 <IconButton
                   onClick={triggerEmbed}
                   disabled={embedLoading}
-                  sx={{
-                    color: "primary.contrastText",
-                    borderRadius: 1,
-                    px: 1.5,
-                    gap: 0.75,
-                  }}
+                  sx={{ color: "primary.contrastText", borderRadius: 1, px: 1.5, gap: 0.75 }}
                 >
                   {embedLoading
                     ? <CircularProgress size={16} sx={{ color: "primary.contrastText" }} />
@@ -384,24 +477,30 @@ export default function App() {
                 </IconButton>
               </span>
             </Tooltip>
+
+            <Divider orientation="vertical" flexItem sx={{ mx: 1, borderColor: "rgba(255,255,255,0.3)" }} />
+
+            <Stack direction="row" alignItems="center" spacing={0.5}>
+              <PersonOutlineOutlinedIcon fontSize="small" sx={{ color: "primary.contrastText", opacity: 0.8 }} />
+              <Typography variant="body2" sx={{ color: "primary.contrastText", opacity: 0.9 }}>
+                {username}
+              </Typography>
+              <Tooltip title="Logout">
+                <IconButton size="small" onClick={onLogout} sx={{ color: "primary.contrastText" }}>
+                  <LogoutOutlinedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Stack>
           </Toolbar>
         </AppBar>
 
         <Collapse in={Boolean(embedTask)}>
           {embedTask?.error ? (
-            <Alert severity="error" onClose={() => setEmbedTask(null)}>
-              {embedTask.error}
-            </Alert>
+            <Alert severity="error" onClose={() => setEmbedTask(null)}>{embedTask.error}</Alert>
           ) : embedTask ? (
             <Alert severity="info" onClose={() => setEmbedTask(null)}>
-              Embedding task queued — task ID:{" "}
-              <strong>{embedTask.task_id}</strong>. Check status at{" "}
-              <Link
-                href={`${API_URL}/admin/embed/${embedTask.task_id}`}
-                target="_blank"
-                rel="noreferrer"
-                sx={{ color: "blue" }}
-              >
+              Embedding task queued — task ID: <strong>{embedTask.task_id}</strong>. Check status at{" "}
+              <Link href={`${API_URL}/admin/embed/${embedTask.task_id}`} target="_blank" rel="noreferrer" sx={{ color: "blue" }}>
                 {`${API_URL}/admin/embed/${embedTask.task_id}`}
               </Link>
             </Alert>
@@ -409,57 +508,27 @@ export default function App() {
         </Collapse>
 
         <Box sx={{ flex: 1, display: "flex", flexDirection: "column", p: 3, gap: 2, overflow: "hidden" }}>
-          <Paper
-            elevation={0}
-            sx={{
-              flex: 1,
-              p: 2,
-              overflowY: "auto",
-              border: "1px solid",
-              borderColor: "divider",
-            }}
-          >
+          <Paper elevation={0} sx={{ flex: 1, p: 2, overflowY: "auto", border: "1px solid", borderColor: "divider" }}>
             {messages.length === 0 ? (
-              <Stack
-                alignItems="center"
-                justifyContent="center"
-                spacing={2}
-                sx={{ height: "100%", py: 6, textAlign: "center" }}
-              >
+              <Stack alignItems="center" justifyContent="center" spacing={2} sx={{ height: "100%", py: 6, textAlign: "center" }}>
                 <Avatar sx={{ width: 56, height: 56, bgcolor: "primary.main" }}>
                   <SmartToyOutlinedIcon />
                 </Avatar>
                 <Box>
-                  <Typography variant="h6" gutterBottom>
-                    How can I help you today?
-                  </Typography>
+                  <Typography variant="h6" gutterBottom>How can I help you today?</Typography>
                   <Typography variant="body2" color="text.secondary">
                     Ask a question about your account, billing, security, or settings.
                   </Typography>
                 </Box>
                 <Stack spacing={1} alignItems="center">
                   <Stack direction="row" spacing={1}>
-                    {SUGGESTIONS.slice(0, 3).map((suggestion) => (
-                      <Chip
-                        key={suggestion}
-                        label={suggestion}
-                        variant="outlined"
-                        clickable
-                        onClick={() => submitQuestion(suggestion)}
-                        disabled={loading}
-                      />
+                    {SUGGESTIONS.slice(0, 3).map((s) => (
+                      <Chip key={s} label={s} variant="outlined" clickable onClick={() => submitQuestion(s)} disabled={loading} />
                     ))}
                   </Stack>
                   <Stack direction="row" spacing={1}>
-                    {SUGGESTIONS.slice(3).map((suggestion) => (
-                      <Chip
-                        key={suggestion}
-                        label={suggestion}
-                        variant="outlined"
-                        clickable
-                        onClick={() => submitQuestion(suggestion)}
-                        disabled={loading}
-                      />
+                    {SUGGESTIONS.slice(3).map((s) => (
+                      <Chip key={s} label={s} variant="outlined" clickable onClick={() => submitQuestion(s)} disabled={loading} />
                     ))}
                   </Stack>
                 </Stack>
@@ -471,20 +540,11 @@ export default function App() {
                     <AssistantMessage key={index} message={message} />
                   ) : (
                     <Stack key={index} direction="row" spacing={1.5} justifyContent="flex-end">
-                      <Paper
-                        elevation={0}
-                        sx={{
-                          maxWidth: "78%",
-                          px: 2,
-                          py: 1.5,
-                          bgcolor: "primary.main",
-                          color: "primary.contrastText",
-                        }}
-                      >
+                      <Paper elevation={0} sx={{ maxWidth: "78%", px: 2, py: 1.5, bgcolor: "primary.main", color: "primary.contrastText" }}>
                         <Typography variant="body1">{message.text}</Typography>
                       </Paper>
                       <Avatar sx={{ width: 36, height: 36, bgcolor: "secondary.main" }}>
-                        U
+                        {username[0]?.toUpperCase()}
                       </Avatar>
                     </Stack>
                   )
@@ -494,21 +554,9 @@ export default function App() {
                     <Avatar sx={{ width: 36, height: 36, bgcolor: "primary.main" }}>
                       <SmartToyOutlinedIcon fontSize="small" />
                     </Avatar>
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        px: 2,
-                        py: 1.5,
-                        bgcolor: "grey.100",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
-                    >
+                    <Paper elevation={0} sx={{ px: 2, py: 1.5, bgcolor: "grey.100", display: "flex", alignItems: "center", gap: 1 }}>
                       <CircularProgress size={16} />
-                      <Typography variant="body2" color="text.secondary">
-                        Thinking...
-                      </Typography>
+                      <Typography variant="body2" color="text.secondary">Thinking...</Typography>
                     </Paper>
                   </Stack>
                 )}
@@ -517,29 +565,19 @@ export default function App() {
             )}
           </Paper>
 
-          <Paper
-            component="form"
-            elevation={0}
-            onSubmit={handleSubmit}
-            sx={{ p: 1.5, border: "1px solid", borderColor: "divider" }}
-          >
+          <Paper component="form" elevation={0} onSubmit={handleSubmit} sx={{ p: 1.5, border: "1px solid", borderColor: "divider" }}>
             <Stack direction="row" spacing={1} alignItems="flex-end">
               <TextField
                 fullWidth
                 multiline
                 maxRows={4}
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask a question..."
                 disabled={loading}
                 variant="outlined"
                 size="small"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    handleSubmit(event);
-                  }
-                }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}
               />
               <IconButton
                 type="submit"
@@ -549,10 +587,7 @@ export default function App() {
                   bgcolor: "primary.main",
                   color: "primary.contrastText",
                   "&:hover": { bgcolor: "primary.dark" },
-                  "&.Mui-disabled": {
-                    bgcolor: "action.disabledBackground",
-                    color: "action.disabled",
-                  },
+                  "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" },
                 }}
               >
                 <SendRoundedIcon />
@@ -563,4 +598,29 @@ export default function App() {
       </Box>
     </Box>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Root
+// ---------------------------------------------------------------------------
+
+export default function App() {
+  const [username, setUsername] = useState(() => localStorage.getItem(USER_KEY) ?? null);
+  const isAuthenticated = Boolean(getToken()) && Boolean(username);
+
+  function handleAuth(name) {
+    setUsername(name);
+  }
+
+  function handleLogout() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    setUsername(null);
+  }
+
+  if (!isAuthenticated) {
+    return <AuthPage onAuth={handleAuth} />;
+  }
+
+  return <ChatApp username={username} onLogout={handleLogout} />;
 }

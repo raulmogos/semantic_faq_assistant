@@ -57,3 +57,31 @@ class SessionSummary(BaseModel):
     session_id: str
     message_count: int
     preview: str | None = None
+
+
+class RegisterRequest(BaseModel):
+    """Request body for POST /auth/register."""
+
+    username: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    """Request body for POST /auth/login."""
+
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    """Response body for auth endpoints."""
+
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserResponse(BaseModel):
+    """Public user representation (no password)."""
+
+    id: int
+    username: str

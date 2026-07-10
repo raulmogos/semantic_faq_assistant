@@ -1,29 +1,12 @@
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 
-from sqlalchemy import Float, String, delete, func, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import delete, select
+
+from app.repos.database import Base, build_engine_and_session
+from app.repos.models import MessageMetadata
 
 logger = logging.getLogger(__name__)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class MessageMetadata(Base):
-    """ORM model for the message_metadata table."""
-
-    __tablename__ = "message_metadata"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    session_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    role: Mapped[str] = mapped_column(String, nullable=False, default="assistant")
-    source: Mapped[str] = mapped_column(String, nullable=False)
-    similarity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
 
 
 @dataclass
@@ -44,12 +27,10 @@ class MessageMetadataStore:
     """
 
     def __init__(self, conn_string: str) -> None:
-        async_conn_string = conn_string.replace("postgresql://", "postgresql+psycopg://", 1)
-        self._engine = create_async_engine(async_conn_string, echo=False)
-        self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
+        self._engine, self._session_factory = build_engine_and_session(conn_string)
 
     async def setup(self) -> None:
-        """Create the message_metadata table if it does not exist."""
+        """Create all ORM tables if they do not exist."""
         logger.info("MessageMetadataStore: creating tables")
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
